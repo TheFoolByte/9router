@@ -107,8 +107,13 @@ export async function listCatalogIds() {
 }
 
 // List round (0 tokens): the monitored set becomes the full live catalog.
-// Every model present in /v1/models counts as active (online); models that
-// left the catalog drop out of the monitored set entirely.
+// Models never pinged count as active (online) from catalog presence alone.
+// Models already tested by a real chat ping keep their ping-derived status:
+// a list round must not clobber it back to "online" (that is how ONLINE
+// pills ended up next to HTTP 503). The stored ping result (httpStatus +
+// latencyMs) is re-run through classifyPing, so records clobbered by an
+// older list round heal themselves on the next round. Models that left the
+// catalog drop out of the monitored set entirely.
 export async function runListRound(state) {
   const catalog = await listCatalogIds();
   const now = new Date().toISOString();
@@ -116,16 +121,31 @@ export async function runListRound(state) {
   const models = {};
   for (const id of ids) {
     const prev = state.models?.[id] || emptyRecord(id);
-    models[id] = {
-      ...prev,
-      id,
-      inCatalog: true,
-      status: "online",
-      checkedVia: "list",
-      failures: 0,
-      error: null,
-      lastCheckedAt: now,
-    };
+    const pinged = prev.checkedVia === "chat" || prev.httpStatus != null;
+    if (pinged) {
+      const result = { ok: prev.httpStatus === 200, status: prev.httpStatus, latencyMs: prev.latencyMs };
+      const { status, failures } = classifyPing(result, prev.failures || 0);
+      models[id] = {
+        ...prev,
+        id,
+        inCatalog: true,
+        status,
+        failures,
+        checkedVia: "chat",
+        error: result.ok ? null : (prev.error || `HTTP ${prev.httpStatus ?? "?"}`),
+      };
+    } else {
+      models[id] = {
+        ...prev,
+        id,
+        inCatalog: true,
+        status: "online",
+        checkedVia: "list",
+        failures: 0,
+        error: null,
+        lastCheckedAt: now,
+      };
+    }
   }
   return {
     ...state,
