@@ -43,7 +43,8 @@ const systemItems = [
 export default function Sidebar({ onClose }) {
   const pathname = usePathname();
   const [mediaOpen, setMediaOpen] = useState(false);
-  const [brainOpen, setBrainOpen] = useState(false);
+  // Open on See Deeper pages on first render; the parent row toggles it after that.
+  const [brainOpen, setBrainOpen] = useState(() => pathname.startsWith("/dashboard/second-brain"));
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -59,6 +60,13 @@ export default function Sidebar({ onClose }) {
       if (data?.enableTranslator) setEnableTranslator(true);
     });
   }, []);
+
+  // Auto-open the submenu when navigating into a See Deeper page.
+  // Tapping the parent row toggles it closed again (pathname doesn't
+  // change on toggle, so this effect doesn't fight the toggle).
+  useEffect(() => {
+    if (pathname.startsWith("/dashboard/second-brain")) setBrainOpen(true);
+  }, [pathname]);
 
   // Lazy check for new npm version in background after initial render
   useEffect(() => {
@@ -163,39 +171,59 @@ export default function Sidebar({ onClose }) {
         <nav className="flex-1 px-4 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
           {navItems.map((item) => (
             <Fragment key={item.href}>
-              <Link
-                href={item.href}
-                onClick={() => {
-                  if (item.href === "/dashboard/second-brain") setBrainOpen(true);
-                  onClose?.();
-                }}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-1 rounded-none border-2 border-transparent transition-all group",
-                  isActive(item.href)
-                    ? "bg-ink text-bg border-border font-extrabold"
-                    : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                )}
-              >
-                <span
+              {item.href === "/dashboard/second-brain" ? (
+                // Dropdown button: tap to open, tap again to close, tap again to open.
+                // (Not a link — the "Second Brain" child below is the link to that page.)
+                <button
+                  type="button"
+                  onClick={() => setBrainOpen((v) => !v)}
+                  aria-expanded={brainOpen}
                   className={cn(
-                    "material-symbols-outlined text-[18px]",
-                    isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
+                    "w-full flex items-center gap-3 px-3 py-1 rounded-none border-2 border-transparent transition-all group text-left cursor-pointer",
+                    isActive(item.href)
+                      ? "bg-ink text-bg border-border font-extrabold"
+                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                   )}
                 >
-                  {item.icon}
-                </span>
-                <span className="text-[13px] font-medium flex-1">{item.label}</span>
-                {item.href === "/dashboard/second-brain" && (
+                  <span
+                    className={cn(
+                      "material-symbols-outlined text-[18px]",
+                      isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
+                    )}
+                  >
+                    {item.icon}
+                  </span>
+                  <span className="text-[13px] font-medium flex-1">{item.label}</span>
                   <span
                     className="material-symbols-outlined text-[14px] transition-transform"
-                    style={{ transform: brainOpen || pathname.startsWith("/dashboard/second-brain") ? "rotate(180deg)" : "rotate(0deg)" }}
+                    style={{ transform: brainOpen ? "rotate(180deg)" : "rotate(0deg)" }}
                   >
                     expand_more
                   </span>
-                )}
-              </Link>
-              {item.href === "/dashboard/second-brain" &&
-                (brainOpen || pathname.startsWith("/dashboard/second-brain")) && (
+                </button>
+              ) : (
+                <Link
+                  href={item.href}
+                  onClick={onClose}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-1 rounded-none border-2 border-transparent transition-all group",
+                    isActive(item.href)
+                      ? "bg-ink text-bg border-border font-extrabold"
+                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "material-symbols-outlined text-[18px]",
+                      isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
+                    )}
+                  >
+                    {item.icon}
+                  </span>
+                  <span className="text-[13px] font-medium flex-1">{item.label}</span>
+                </Link>
+              )}
+              {item.href === "/dashboard/second-brain" && brainOpen && (
                   <div className="pl-9">
                     {[
                       { href: "/dashboard/second-brain", label: "Second Brain", icon: "psychology" },
