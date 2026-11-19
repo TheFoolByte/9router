@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Card } from "@/shared/components";
 import { CATEGORIES, categoryOf, categoryLabel } from "@/lib/secondBrain/categories";
 
@@ -51,6 +52,16 @@ function Ticker({ count }) {
 }
 
 export default function MonitorClient() {
+  const router = useRouter();
+  // Gate: "confirm" (Y/N) -> "password" -> "open". In-memory only: leaving
+  // the page or refreshing locks it again.
+  const [gate, setGate] = useState("confirm");
+  const [confirmInput, setConfirmInput] = useState("");
+  const [confirmError, setConfirmError] = useState("");
+  const [pwInput, setPwInput] = useState("");
+  const [pwError, setPwError] = useState("");
+  const [verifying, setVerifying] = useState(false);
+
   const [state, setState] = useState(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("all");
@@ -71,10 +82,44 @@ export default function MonitorClient() {
   }, []);
 
   useEffect(() => {
+    if (gate !== "open") return;
     load();
     const id = setInterval(load, 30000);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, gate]);
+
+  // "N" closes the page: back to where the user came from, or Second Brain.
+  const closeGate = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) router.back();
+    else router.push("/dashboard/second-brain");
+  }, [router]);
+
+  const submitConfirm = () => {
+    const v = confirmInput.trim().toLowerCase();
+    if (v === "y") {
+      setConfirmError("");
+      setGate("password");
+    } else if (v === "n") {
+      closeGate();
+    } else {
+      setConfirmError("Ketik Y atau N.");
+    }
+  };
+
+  const submitPassword = async () => {
+    if (!pwInput || verifying) return;
+    setVerifying(true);
+    setPwError("");
+    try {
+      await postJson("/api/second-brain/monitor/verify", { password: pwInput });
+      setPwInput("");
+      setGate("open");
+    } catch (e) {
+      setPwError(e.message || "Password salah.");
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   const runRound = async (mode, models) => {
     setBusy(mode);
@@ -131,6 +176,92 @@ export default function MonitorClient() {
       }),
     [records, tab, category, search]
   );
+
+  // Gate: the monitor content (and its data fetch) only exists once unlocked.
+  if (gate !== "open") {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div className="w-full max-w-sm border-[3px] border-black bg-[#FFF6E5] p-5 shadow-[6px_6px_0_#0A0A0A]">
+          <span className="inline-block bg-black text-white text-[11px] font-extrabold px-1.5 py-0.5 mb-3">
+            LIVE OR NOT
+          </span>
+          {gate === "confirm" ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                submitConfirm();
+              }}
+            >
+              <h1 className="text-xl font-extrabold leading-tight mb-4">
+                Are you sure to continue?
+              </h1>
+              <div className="flex items-center justify-center gap-3 mb-4">
+                <span className="text-2xl font-extrabold">Y</span>
+                <span className="text-text-muted font-extrabold">/</span>
+                <span className="text-2xl font-extrabold">N</span>
+              </div>
+              <input
+                value={confirmInput}
+                onChange={(e) => setConfirmInput(e.target.value.toUpperCase().slice(0, 1))}
+                autoFocus
+                placeholder="Y / N"
+                aria-label="Ketik Y atau N"
+                className="w-full text-center text-2xl font-extrabold uppercase py-2 px-3 bg-white border-[3px] border-black rounded-none focus:outline-none mb-2"
+              />
+              {confirmError && (
+                <p className="text-sm text-danger font-bold text-center mb-2">{confirmError}</p>
+              )}
+              <button
+                type="submit"
+                className="w-full py-2.5 text-sm font-extrabold uppercase bg-[#FFDC58] border-2 border-black shadow-[2px_2px_0_#0A0A0A]"
+              >
+                Lanjut
+              </button>
+            </form>
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                submitPassword();
+              }}
+            >
+              <h1 className="text-xl font-extrabold leading-tight mb-4">
+                Masukkan password dashboard
+              </h1>
+              <input
+                type="password"
+                value={pwInput}
+                onChange={(e) => setPwInput(e.target.value)}
+                autoFocus
+                placeholder="Password"
+                autoComplete="current-password"
+                className="w-full py-2 px-3 bg-white border-[3px] border-black rounded-none focus:outline-none mb-2"
+              />
+              {pwError && <p className="text-sm text-danger font-bold mb-2">{pwError}</p>}
+              <button
+                type="submit"
+                disabled={verifying || !pwInput}
+                className="w-full py-2.5 text-sm font-extrabold uppercase bg-[#FF5C00] text-white border-2 border-black shadow-[2px_2px_0_#0A0A0A] disabled:opacity-50"
+              >
+                {verifying ? "…" : "Buka Page"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPwError("");
+                  setPwInput("");
+                  setGate("confirm");
+                }}
+                className="w-full mt-2 py-1.5 text-xs font-extrabold uppercase text-text-muted"
+              >
+                ← Kembali ke konfirmasi
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (!state) {
     return <div className="text-text-muted text-sm px-1">{error || "Memuat monitor model…"}</div>;
