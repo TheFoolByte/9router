@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button, Card, Badge } from "@/shared/components";
 import { fetchState, postAction } from "../api";
-import GraphView, { KIND_META } from "./components/GraphView";
+import GraphView, { KIND_META } from "./GraphView";
 
 const KIND_ORDER = ["goal", "step", "fact", "file", "tool", "decision"];
 
